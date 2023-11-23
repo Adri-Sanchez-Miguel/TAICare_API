@@ -1,9 +1,13 @@
 use std::{env, process::Command, thread, time::Duration};
+use mongodb::{Client, options::{ClientOptions, ResolverConfig}, bson::doc};
 use log::LevelFilter;
 use tapo::{ApiClient, P110};
-use paho_mqtt::{Client, CreateOptionsBuilder, Message};
 use firebase_rs::*;
 use serde_json::json;
+use bson::Document;
+use bson::Bson::DateTime;
+use tokio;
+use chrono::Utc;
 
 /// Discover Tapo devices based on their MAC address prefix.
 fn discover_tapo_devices() -> Vec<String> {
@@ -23,26 +27,25 @@ fn discover_tapo_devices() -> Vec<String> {
             }
         }
     }
-
     ip_addresses
-}
-
-/// Set up the MQTT client.
-fn setup_mqtt() -> Client {
-    let create_options = CreateOptionsBuilder::new()
-        .server_uri("tcp://127.0.0.1:1883")
-        .client_id("tapo-client")
-        .finalize();
-    let client = Client::new(create_options).expect("Failed to create MQTT client");
-    client.connect(None).expect("Failed to connect to MQTT broker");
-
-    client
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let current_time = Utc::now();
+
+   // Load the MongoDB connection string from an environment variable:
+   let client_uri =
+      env::var("MONGODB_URI").expect("You must set the MONGODB_URI environment var!");
+
+   // A Client is needed to connect to MongoDB and an extra line of code to work around a DNS issue on Windows:
+   let options =
+      ClientOptions::parse_with_resolver_config(&client_uri, ResolverConfig::cloudflare())
+         .await?;
+   let client = Client::with_options(options)?;
+
     // Initialize Firebase
-    let firebase = Firebase::new("https://taicare-default-rtdb.europe-west1.firebasedatabase.app/")
+    let _firebase = Firebase::new("https://taicare-default-rtdb.europe-west1.firebasedatabase.app/")
         .expect("Failed to initialize Firebase");
 
     // Set up logging
@@ -71,11 +74,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let devices = futures::future::join_all(device_futures).await;
     println!("API Clients created for {} devices.", devices.len());    
 
-    // Set up MQTT
-    println!("Setting up MQTT...");
-    let client = setup_mqtt();
-    println!("MQTT setup complete.");
-
     loop {
         println!("Starting loop iteration...");
         for device_result in &devices {
@@ -91,37 +89,74 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let energy_usage = device.get_energy_usage().await?;
                     println!("Energy usage fetched successfully!");
     
-                    // Combine them into a JSON object
-                    let important_information = json!({
-                        "device_info": device_info,
-                        "energy_usage": energy_usage
-                    });
+                    // FILTRAR SI ESTÁ ENCENDIDO O APAGADO
+                    let nickname = &device_info.nickname;
+                    let device_id = &device_info.device_id;
+
+                    let current_power = &energy_usage.current_power;
+                    let current_power_i64 = *current_power as i64;
+                    let local_time = &energy_usage.local_time;
+                    let status = &device_info.device_on;
+                    
+                    let local_time_str = format!("{}", local_time);
+
+                    let _important_information = json!({
+                        "device_info": {
+                            "nickname": nickname,
+                            "device_id": device_id
+                        },
+                        "energy_usage": {
+                            "current_power": current_power,
+                            "local_time": local_time_str
+                        }
+                    });                    
     
-                    // Prepare the message for MQTT
-                    let important_information_str = serde_json::to_string(&important_information)?;
-                    let message = Message::new("tapo/important_information", important_information_str.as_bytes(), 0);
-    
+                    // Create the devices collection and insert a sample device with an "appliance" field
+                    let devices: mongodb:: Collection<Document>  = client.database("TAICare").collection("Device");
+                    println!("Collection found");
+                    let existing_device = devices.find_one(doc! { "appliance": nickname }, None).await?;
+                    println!("Device found (or not)");
+
+                    let device_id = if let Some(device) = existing_device {
+                        // If the device already exists, get its ID
+                        device.get("_id").and_then(|id| id.as_object_id()).expect("Expected device to have an ObjectId").clone()
+                    } else {
+                        // If the device doesn't exist, insert it and get its new ID
+                        let new_device = doc! {
+                            "appliance": nickname
+                        };
+                        let device_insert_result = devices.insert_one(new_device, None).await.expect("Failed to insert device.");
+                        device_insert_result.inserted_id.as_object_id().expect("Retrieved _id should have been of type ObjectId").clone()
+                    };
+                    
+                    println!("Working with device ID: {:?}", device_id);
+
+                    // Create the data collection and insert sample data related to the above device
+                    let data: mongodb:: Collection<Document>  = client.database("TAICare").collection("Data");
+                    let new_data = doc! {
+                        "power": current_power_i64,
+                        "device_id": device_id,
+                        "status": status,
+                        "time": DateTime(current_time.into())
+                    };
+                    let data_insert_result = data.insert_one(new_data, None).await.expect("Failed to insert data.");
+
+                    println!("Inserted data with ID: {:?}", data_insert_result.inserted_id);
+                
                     // Send data to Firebase
-                    println!("Publishing to Firebase...");
-                    let firebase_info = firebase.at("importantInformation");
-                    firebase_info.set(&important_information).await.map_err(|err| {
-                        println!("{:?}", err);
-                        std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", err))
-                    })?;
-                    println!("Published to Firebase!");
-    
-                    // Publish to MQTT
-                    println!("Publishing to MQTT...");
-                    client.publish(message)?;
-                    println!("Published to MQTT!");
+                    // println!("Publishing to Firebase...");
+                    // let firebase_info = firebase.at("importantInformation");
+                    // firebase_info.set(&important_information).await.map_err(|err| {
+                    //     println!("{:?}", err);
+                    //     std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", err))
+                    // })?;
+                    // println!("Published to Firebase!");
                 },
                 Err(e) => {
                     println!("Failed to create API client for a device: {}", e);
                 }
             }
         }
-    
         thread::sleep(Duration::from_secs(5));
     }
-    
 }
