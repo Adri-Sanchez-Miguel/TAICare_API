@@ -11,6 +11,10 @@ readme = "README.md"
 repository = "https://github.com/mihai-dinculescu/tapo"
 
 [dependencies]
+mongodb = "2.7.0"
+bson = { version = "2", features = ["chrono-0_4"] }
+tokio = { version = "1.33", features = ["rt-multi-thread", "macros","full"] }
+chrono = { version = "0.4", features = ["serde"] }
 firebase-rs = "2.0.5"
 paho-mqtt = "0.12.1"
 anyhow = "1.0"
@@ -23,10 +27,9 @@ openssl = "0.10"
 serde = {version = "1.0", features = ["derive", "serde_derive"] }
 serde_json = "1.0.2"
 smartcore = {version = "0.2.1", features=["serde"]}
-time = { version = "0.3", features = ["parsing"] }
+time = { version = "0.3", features = ["parsing", "serde"] }
 futures = "0.3"
 
 [dev-dependencies]
 pretty_env_logger = "0.4"
-tokio = { version = "1.25", features = ["rt-multi-thread", "macros","full"] }
 time = { version = "0.3", features = ["parsing", "macros"] }
