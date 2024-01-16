@@ -1,7 +1,7 @@
 use std::{env, process::Command, thread, time::Duration};
 use mongodb::{Client, options::{ClientOptions, ResolverConfig}, bson::doc};
 use log::LevelFilter;
-use tapo::{ApiClient, P110};
+use tapo::{ApiClient, PlugEnergyMonitoringHandler};
 use firebase_rs::*;
 use serde_json::json;
 use bson::Document;
@@ -20,7 +20,7 @@ fn discover_tapo_devices() -> Vec<String> {
 
     let mut ip_addresses = Vec::new();
     for line in output_str.lines() {
-        if line.contains("30:de:4b:36") {
+        if line.contains("30:de:4b:36") || line.contains("78:8c:b5:74") {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {
                 ip_addresses.push(parts[0].to_string());
@@ -32,7 +32,7 @@ fn discover_tapo_devices() -> Vec<String> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let current_time = Utc::now();
+    // let current_time = Utc::now();
 
    // Load the MongoDB connection string from an environment variable:
    let client_uri =
@@ -68,10 +68,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Discover devices
     let device_futures: Vec<_> = discovered_ips.iter()
-    .map(|ip| ApiClient::<P110>::new(ip.clone(), tapo_username.clone(), tapo_password.clone(), true))
+    .map(|ip| ApiClient::new(tapo_username.clone(), tapo_password.clone()).expect("REASON").p110(ip.clone()))
     .collect();
 
-    let devices = futures::future::join_all(device_futures).await;
+    let devices: Vec<Result<PlugEnergyMonitoringHandler, tapo::Error>> = futures::future::join_all(device_futures).await;
     println!("API Clients created for {} devices.", devices.len());    
 
     loop {
@@ -80,6 +80,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Check if the device creation was successful
             match device_result {
                 Ok(device) => {
+                    let current_time = Utc::now();
+
                     // Fetch device information and energy usage
                     println!("Fetching device info...");
                     let device_info = device.get_device_info().await?;
