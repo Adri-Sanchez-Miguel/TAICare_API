@@ -3,6 +3,6 @@ Código en Rust para extraer información de los enchufes inteligentes TAPO P110
 
 Para su ejecución, habrá que establecer las variables de entorno "TAPO_USERNAME", "TAPO_PASSWORD" y "MONGODB_URI". 
 
-Después, "cargo build", "cargo run --example tapo_p110_multiple".
+Después, "cargo build", "cargo run --example tapo_p110_multiple.rs".
 
 Creada por Adrián Sánchez-Miguel para el grupo de investigación MAmI.
