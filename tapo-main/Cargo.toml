@@ -10,7 +10,6 @@ bson = { version = "2", features = ["chrono-0_4"] }
 tokio = { version = "1.33", features = ["rt-multi-thread", "macros","full"] }
 chrono = { version = "0.4", features = ["serde"] }
 firebase-rs = "2.0.5"
-paho-mqtt = "0.12.1"
 anyhow = "1.0"
 base16ct = { version = "0.1", features = ["alloc"] }
 base64 = "0.21"
