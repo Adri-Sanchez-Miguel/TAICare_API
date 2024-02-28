@@ -27,4 +27,13 @@ cargo build
 cargo run --example tapo_p110_multiple
 ```
 
+## Docker
+
+En caso de querer ejecutar esta API utilizando Docker para una mayor independencia del hardware, se utilizará la siguiente imagen:
+
+```bash
+docker pull adriansanchez2902/tapo-main:latest
+docker run -e TAPO_USERNAME='nombre_usuario' -e TAPO_PASSWORD='password' -e MONGODB_URI='mongodb_uri' --net=host adriansanchez2902/tapo-main:latest
+```
+
 Creada por Adrián Sánchez-Miguel para el grupo de investigación MAmI.
