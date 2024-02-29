@@ -11,22 +11,40 @@ use chrono::Utc;
 
 /// Discover Tapo devices based on their MAC address prefix.
 fn discover_tapo_devices() -> Vec<String> {
-    let output = Command::new("sudo")
-        .arg("arp-scan")
-        .arg("-l")
-        .output()
-        .expect("Failed to execute arp-scan");
-    let output_str = String::from_utf8_lossy(&output.stdout);
-
     let mut ip_addresses = Vec::new();
-    for line in output_str.lines() {
-        if line.contains("30:de:4b:36") || line.contains("78:8c:b5:7") {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                ip_addresses.push(parts[0].to_string());
+    let mut attempts = 0;
+    const MAX_ATTEMPTS: usize = 5;
+
+    while ip_addresses.is_empty() && attempts < MAX_ATTEMPTS {
+        let output = Command::new("sudo")
+            .arg("arp-scan")
+            .arg("-l")
+            .output()
+            .expect("Failed to execute arp-scan");
+        let output_str = String::from_utf8_lossy(&output.stdout);
+
+        for line in output_str.lines() {
+            if line.contains("30:de:4b:36") || line.contains("78:8c:b5:7") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    ip_addresses.push(parts[0].to_string());
+                }
             }
         }
+
+        // Increment the attempts counter
+        attempts += 1;
+
+        // If no IP addresses were found and the maximum number of attempts has been reached
+        if ip_addresses.is_empty() && attempts >= MAX_ATTEMPTS {
+            eprintln!("Maximum attempts reached without discovering any devices.");
+            exit(1); // Exit the program with a non-zero exit code to indicate failure
+        } else if ip_addresses.is_empty() {
+            println!("No devices found, retrying...");
+            thread::sleep(Duration::from_secs(5)); 
+        }
     }
+
     ip_addresses
 }
 
@@ -45,8 +63,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
    let client = Client::with_options(options)?;
 
     // Initialize Firebase
-    let _firebase = Firebase::new("https://taicare-default-rtdb.europe-west1.firebasedatabase.app/")
-        .expect("Failed to initialize Firebase");
+    // let _firebase = Firebase::new("https://taicare-default-rtdb.europe-west1.firebasedatabase.app/")
+    //     .expect("Failed to initialize Firebase");
 
     // Set up logging
     let log_level = env::var("RUST_LOG")
