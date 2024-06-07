@@ -108,55 +108,96 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		        Ok(device) => {
 		            let current_time = Utc::now();
 
-		            // Fetch device information and energy usage
-		            println!("Fetching device info...");
-		            let device_info = device.get_device_info().await?;
-		            println!("Device info fetched successfully!");
-	    
-		            println!("Fetching energy usage...");
-		            let energy_usage = device.get_energy_usage().await?;
-		            println!("Energy usage fetched successfully!");
-	    
-		            let nickname = &device_info.nickname;
-		            let device_id = &device_info.device_id;
+					// Fetch device information and energy usage
+					println!("Fetching device info...");
+					let device_info = device.get_device_info().await?;
+					println!("Device info fetched successfully!");
 
-		            let current_power = &energy_usage.current_power;
-		            let current_power_i64 = *current_power as i64;
-		            let local_time = &energy_usage.local_time;
-		            let status = &device_info.device_on;
-		            
-		            let local_time_str = format!("{}", local_time);
+					println!("Fetching energy usage...");
+					let energy_usage = device.get_energy_usage().await?;
+					println!("Energy usage fetched successfully!");
 
-		            let _important_information = json!({
-		                "device_info": {
-		                    "nickname": nickname,
-		                    "device_id": device_id
-		                },
-		                "energy_usage": {
-		                    "current_power": current_power,
-		                    "local_time": local_time_str
-		                }
-		            });                    
-	    
-		            // Create the devices collection and insert a sample device with an "appliance" field
-		            let devices: mongodb:: Collection<Document>  = client.database("TAICare").collection("Device");
-		            println!("Collection found");
-		            let existing_device = devices.find_one(doc! { "appliance": nickname }, None).await?;
-		            println!("Device found or created");
+					let nickname = &device_info.nickname;
+					let device_id = &device_info.device_id;
 
-		            let device_id = if let Some(device) = existing_device {
-		                // If the device already exists, get its ID
-		                device.get("_id").and_then(|id| id.as_object_id()).expect("Expected device to have an ObjectId").clone()
-		            } else {
-		                // If the device doesn't exist, insert it and get its new ID
-		                let new_device = doc! {
-		                    "appliance": nickname
-		                };
-		                let device_insert_result = devices.insert_one(new_device, None).await.expect("Failed to insert device.");
-		                device_insert_result.inserted_id.as_object_id().expect("Retrieved _id should have been of type ObjectId").clone()
-		            };
-		            
-		            println!("Working with device ID: {:?}", device_id);
+					let nickname_parts: Vec<&str> = nickname.split('-').collect();
+					let (plug_model, user, room, appliance) = match nickname_parts.as_slice() {
+						[p1, p2, p3, p4] => (p1.to_string(), p2.to_string(), p3.to_string(), p4.to_string()),
+						_ => {
+							// Handle the error (e.g., log an error message, return an error, or panic)
+							println!("Error: Nickname does not have exactly 4 parts.");
+							// You can choose a default value or return an error here
+							("".to_string(), "".to_string(), "".to_string(), "".to_string())
+						}
+					};
+
+					let current_power = &energy_usage.current_power;
+					let current_power_i64 = *current_power as i64;
+					let local_time = &energy_usage.local_time;
+					let status = &device_info.device_on;
+					let synthetic = false;
+
+					let local_time_str = format!("{}", local_time);
+
+					let _important_information = json!({
+						"device_info": {
+							"nickname": nickname,
+							"device_id": device_id
+						},
+						"energy_usage": {
+							"current_power": current_power,
+							"local_time": local_time_str
+						}
+					});
+
+					// Create the devices collection
+					let devices: mongodb::Collection<Document> = client.database("TAICare").collection("Device");
+					println!("Collection found");
+
+					// Create a filter to search for a device with the given user, room, and appliance
+					let device_filter = doc! {
+						"user": user.clone(),
+						"room": room.clone(),
+						"appliance": appliance.clone(),
+					};
+
+					// Use the filter to find an existing device
+					let existing_device = devices.find_one(device_filter, None).await;
+
+					match existing_device {
+						Ok(Some(device)) => {
+							println!("Found an existing device with user: {}, room: {}, appliance: {}", user, room, appliance);
+							let device_id = device
+								.get("_id")
+								.and_then(|id| id.as_object_id())
+								.expect("Expected device to have an ObjectId")
+								.clone();
+							println!("Existing device ID: {:?}", device_id);
+						}
+						Ok(None) => {
+							println!("No existing device found with user: {}, room: {}, appliance: {}", user, room, appliance);
+							let new_device = doc! {
+								"plugmodel": plug_model,
+								"user": user,
+								"room": room,
+								"appliance": appliance,
+							};
+							let device_insert_result = devices
+								.insert_one(new_device, None)
+								.await
+								.expect("Failed to insert device.");
+							let device_id = device_insert_result
+								.inserted_id
+								.as_object_id()
+								.expect("Retrieved _id should have been of type ObjectId")
+								.clone();
+							println!("Inserted a new device with ID: {:?}", device_id);
+						}
+						Err(error) => {
+							println!("Error while finding or inserting a device: {:?}", error);
+							// You might want to return an error or handle this case appropriately
+						}
+					}
 
 		            // Create the data collection and insert sample data related to the above device
 		            let data: mongodb:: Collection<Document>  = client.database("TAICare").collection("Data");
@@ -164,6 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		                "power": current_power_i64,
 		                "device_id": device_id,
 		                "status": status,
+						"synthetic": synthetic,
 		                "time": DateTime(current_time.into())
 		            };
 		            let data_insert_result = data.insert_one(new_data, None).await.expect("Failed to insert data.");
