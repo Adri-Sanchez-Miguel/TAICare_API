@@ -1,6 +1,6 @@
 FROM rust:bookworm as builder
 
-LABEL maintainer="Adrian.SOrtega@uclm.es"
+LABEL maintainer="taicare.project@gmail.com"
 
 ENV TAPO_USERNAME=defaultUsername
 ENV TAPO_PASSWORD=defaultPassword
@@ -8,6 +8,7 @@ ENV MONGODB_URI=defaultUri
 ENV USE_DOCKER=defaultDocker
 
 WORKDIR /usr/src/tapo-main
+ADD folder tapo-main
 COPY . .
 RUN cargo build --release
 FROM debian:bookworm-slim
