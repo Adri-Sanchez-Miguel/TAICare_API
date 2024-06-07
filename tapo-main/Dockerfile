@@ -8,7 +8,7 @@ ENV MONGODB_URI=defaultUri
 ENV USE_DOCKER=defaultDocker
 
 WORKDIR /usr/src/tapo-main
-ADD folder tapo-main
+ADD tapo-main /usr/src/tapo-main
 COPY . .
 RUN cargo build --release
 FROM debian:bookworm-slim
