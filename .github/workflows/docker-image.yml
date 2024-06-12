@@ -26,10 +26,9 @@ jobs:
           images: taicareuser/taicare-docker-hub-repository
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./tapo-main/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+        run: |
+          docker buildx build \
+            --file ./tapo-main/Dockerfile \
+            --platform linux/arm64,linux/amd64\
+            --tag ${{ steps.meta.outputs.labels }} \
+            --push .
