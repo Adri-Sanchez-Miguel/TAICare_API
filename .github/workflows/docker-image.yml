@@ -27,8 +27,4 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          docker buildx build \
-            --file ./tapo-main/Dockerfile \
-            --platform linux/arm64,linux/amd64\
-            --tag ${{ steps.meta.outputs.labels }} \
-            --push .
+          docker buildx build --file ./tapo-main/Dockerfile --platform linux/arm64,linux/amd64 --tag ${{ steps.meta.outputs.labels }} --push .
