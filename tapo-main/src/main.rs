@@ -118,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 					println!("Energy usage fetched successfully!");
 
 					let nickname = &device_info.nickname;
-					let device_id = &device_info.device_id;
+					let device_string = &device_info.device_id;
 
 					let nickname_parts: Vec<&str> = nickname.split('-').collect();
 					let (plug_model, user, room, appliance) = match nickname_parts.as_slice() {
@@ -142,7 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 					let _important_information = json!({
 						"device_info": {
 							"nickname": nickname,
-							"device_id": device_id
+							"device_string": device_string
 						},
 						"energy_usage": {
 							"current_power": current_power,
@@ -151,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 					});
 
 					// Create the devices collection
-					let devices: mongodb::Collection<Document> = client.database("TAICare").collection("Device");
+					let devices: mongodb::Collection<Document> = client.database("taicaredb").collection("devices");
 					println!("Collection found");
 
 					// Create a filter to search for a device with the given user, room, and appliance
@@ -177,6 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 						Ok(None) => {
 							println!("No existing device found with user: {}, room: {}, appliance: {}", user, room, appliance);
 							let new_device = doc! {
+								"device_id": device_string,
 								"plugmodel": plug_model,
 								"user": user,
 								"room": room,
@@ -200,10 +201,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 					}
 
 		            // Create the data collection and insert sample data related to the above device
-		            let data: mongodb:: Collection<Document>  = client.database("TAICare").collection("Data");
+		            let data: mongodb:: Collection<Document>  = client.database("taicaredb").collection("data");
 		            let new_data = doc! {
 		                "power": current_power_i64,
-		                "device_id": device_id,
+		                "device_id": device_string,
 		                "status": status,
 						"synthetic": synthetic,
 		                "time": DateTime(current_time.into())
